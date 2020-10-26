@@ -1,0 +1,490 @@
+{% extends 'api/base.html' %}
+{% load static %}
+
+{% block nav_menu %}
+<ul class="navbar-nav mr-auto">
+    <li class="nav-item active">
+        <a class="nav-link" href="{% url 'home' %}">Главная страница</span></a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" href="{% url 'about' %}">Информация</a>
+    </li>
+</ul>
+{% endblock %}
+
+{% block content %}
+<div class="dropdown what_to_do">
+    <button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownMenu2" data-toggle="dropdown"
+        aria-haspopup="true" aria-expanded="false">
+        Что сделать?
+    </button>
+    <div class="dropdown-menu" aria-labelledby="dropdownMenu2">
+        <button class="dropdown-item" type="button" onclick="create_obj_for_btn(this)">1. Создать новый объект</button>
+        <button class="dropdown-item" type="button" onclick="get_ids()">2. Получить Id всех
+            объектов</button>
+        <button class="dropdown-item" type="button" onclick="create_obj_for_btn(this)">3. Получить информацию об
+            объекте</button>
+        <button class="dropdown-item" type="button" onclick="create_obj_for_btn(this)">4. Добавить вектор для
+            объекта</button>
+        <button class="dropdown-item" type="button" onclick="create_obj_for_btn(this)">5. Сравнить векторы двух
+            объектов</button>
+        <button class="dropdown-item" type="button" onclick="create_obj_for_btn(this)">6. Удалить объект</button>
+    </div>
+</div>
+<div id="request_div"></div>
+<div id="response_div"></div>
+{% endblock %}
+
+{% block script %}
+<script>
+    /**
+     * Функция получает Id из поля формы и проверяет валидность.
+     * @param input_id: Id поля формы, из которого нужно получить Id.
+     * @returns: список [Id, valid], где valid == true, если Id валидый. 
+     */
+    function check_id(input_id = 'obj_id') {
+        let obj_id = document.getElementById(input_id).value;
+        let valid = obj_id.match(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/);
+        return [obj_id, valid];
+    }
+
+    /**
+     * Функция удаляет все содержимое блока для ввода или вывода данных.
+     * @param div: блок для ввода или вывода данных.
+     */
+    function delete_div_content(div) {
+        while (div.hasChildNodes()) {
+            div.removeChild(div.firstChild);
+        }
+    }
+
+    /**
+     * Функция для отправки GET запросов на сервер.
+     * @param url: адрес запроса;
+     * @param url_param: список параметров в адресе;
+     * @param req_param: список параметров строки запроса.
+     */
+    function get(url, url_param = [], req_param = []) {
+        return new Promise(function (succeed, fail) {
+            var request = new XMLHttpRequest();
+            // Добавляем параметры в адрес
+            for (let param of url_param)
+                url += param + '/';
+            // Добавляем параметры в строку запроса
+            let i = 0;
+            for (let param of req_param) {
+                if (i == 0)
+                    url += '?';
+                url += param[0] + '=' + param[1];
+                i += 1;
+                if (i != req_param.length)
+                    url += '&'
+            }
+            console.log(url);
+            request.open('GET', url, true);
+            request.addEventListener('load', function () {
+                if (request.status == 200) {
+                    console.log(request);
+                    succeed(JSON.parse(request.response));
+                }
+                else
+                    fail(new Error('Request failed: ' + request.statusText));
+            });
+            request.addEventListener('error', function () {
+                fail(new Error('Network error'));
+            });
+            request.send();
+        });
+    }
+
+    /**
+     * Функция для отправки POST запросов на сервер.
+     * @param url: адрес запроса;
+     * @param json: тело запроса в виде JSON-объекта.
+     */
+    function post(url, json) {
+        return new Promise(function (succeed, fail) {
+            var request = new XMLHttpRequest();
+            request.open('POST', url, true);
+            request.setRequestHeader('Content-Type', 'application/json; charset=utf-8');
+            request.addEventListener('load', function () {
+                if (request.status < 400)
+                    succeed(JSON.parse(request.response));
+                else
+                    fail(new Error('Request failed: ' + request.statusText));
+            });
+            request.addEventListener('error', function () {
+                fail(new Error('Network error'));
+            });
+            request.send(JSON.stringify(json));
+        });
+    }
+
+    /**
+     * Функция для отправки PUT запросов на сервер.
+     * @param url: адрес запроса;
+     * @param formdata: тело запроса в виде FormData.
+     */
+    async function put(formdata) {
+        let response = await fetch('{% url "persons" %}', {
+            method: 'PUT',
+            body: formdata
+        });
+        let resp_form = document.getElementById('response');
+        if (response.status == 202) {
+            // сервер ответит подтверждением и размером изображения
+            let result = await response.json();
+            resp_form.value = 'Вектор добавлен';
+        }
+        else
+            resp_form.value = 'Вектор не добавлен';
+    }
+
+    /**
+     * Функция для отправки DELETE запросов на сервер.
+     * @param url: адрес запроса;
+     * @param formdata: тело запроса в виде FormData.
+     */
+    async function del(param) {
+        let response = await fetch('{% url "persons" %}' + param + '/', {
+            method: 'DELETE'
+        });
+        let resp_form = document.getElementById('response');
+        if (response.status == 200) {
+            // сервер ответит подтверждением и размером изображения
+            let result = await response.json();
+            resp_form.value = 'Объект удален';
+        }
+        else
+            resp_form.value = 'Объект не удален';
+    }
+
+    /**
+     * Функция выполняется при клике по одной из кнопок Что сделать? Функция
+     * заполняет блок request_div формой, в которую клиент может ввести данные для
+     * запроса.
+     * @param btn: кнопка, по которой кликнули.
+     */
+    function create_obj_for_btn(btn) {
+        // Очищаются блоки ввода и вывода данных
+        delete_div_content(request_div);
+        delete_div_content(response_div);
+        // Наполняется блок вывода
+        if (btn.innerText == '1. Создать новый объект')
+            request_div.innerHTML = new_obj_creation_code;
+        else if (btn.innerText == '3. Получить информацию об объекте')
+            request_div.innerHTML = receiving_info_code;
+        else if (btn.innerText == '4. Добавить вектор для объекта')
+            request_div.innerHTML = addition_vector_code;
+        else if (btn.innerText == '5. Сравнить векторы двух объектов')
+            request_div.innerHTML = comparison_objs_code;
+        else if (btn.innerText == '6. Удалить объект')
+            request_div.innerHTML = deletion_obj_code;
+    }
+
+    /**
+     * Функция выполняется при создании нового объекта.
+     */
+    function create_new_obj() {
+        // Очищается блок вывода данных
+        delete_div_content(response_div);
+        // Имя и фамилия объекта
+        let first_name = document.getElementById('first_name').value;
+        let last_name = document.getElementById('last_name').value;
+        console.log(first_name, last_name);
+        if (first_name && last_name) {
+            // Введены валидные имя и фамилия. Наполняется блок вывода
+            response_div.innerHTML = creation_obj_output_code;
+            // Отправляется запрос
+            json = { 'first_name': first_name, 'last_name': last_name };
+            post('{% url "persons" %}', json).then(function (response) {
+                // Запрос выполнен
+                let id = document.getElementById('obj_id');
+                id.value = response.Id
+            }, function (error) {
+                // Запрос не выполнен
+                let id = document.getElementById('obj_id');
+                id.value = 'Не удалось создать новый объект';
+                console.log(error);
+            });
+        }
+    }
+
+    /**
+     * Функция выполняется при клике по кнопке Получить Id всех объектов.
+     */
+    function get_ids() {
+        // Очищаются блоки ввода и вывода данных
+        delete_div_content(request_div);
+        delete_div_content(response_div);
+        // Наполняетя блок вывода
+        response_div.innerHTML = receiving_ids_output_code;
+        // Отправляется запрос
+        get('{% url "persons" %}').then(function (response) {
+            // Запрос выполнен
+            let selector = document.getElementById('objs_ids');
+            for (let id of response['Id']) {
+                let option = document.createElement('option');
+                option.innerText = id;
+                selector.appendChild(option);
+            }
+        }, function (error) {
+            // Запрос не выполнен
+            console.log(error);
+        });
+    }
+
+    /**
+     * Функция выполняется при получении информации об объекте.
+     */
+    function get_info() {
+        // Очищается блок вывода данных
+        delete_div_content(response_div);
+        // Id объекта проверяется на валидность
+        let obj_id, valid;
+        [obj_id, valid] = check_id();
+        if (valid) {
+            // Id валидный. Наполняется блок вывода
+            response_div.innerHTML = receiving_info_output_code;
+            // Отправляется запрос
+            get('{% url "persons" %}', [obj_id]).then(function (response) {
+                // Запрос выполнен
+                let first_name = document.getElementById('first_name');
+                let last_name = document.getElementById('last_name');
+                console.log('as');
+                if (response.hasOwnProperty('first_name')) {
+                    // Объект с заданным Id существует
+                    first_name.value = response.first_name;
+                    last_name.value = response.last_name;
+                }
+                else {
+                    // Объекта с заданным Id нет
+                    first_name.value = 'Объекта с заданным Id нет';
+                    last_name.value = 'Объекта с заданным Id нет';
+                }
+                if (response.vector) {
+                    let vector;
+                    vector = document.getElementById('vector_exists');
+                    vector.checked = true;
+                    vector = document.getElementById('vector_dont_exists');
+                    vector.checked = false;
+                }
+            }, function (error) {
+
+                // Запрос не выполнен
+                console.log(error);
+            });
+        }
+    }
+
+    /**
+     * Функция выполняется при добавлении вектора объекту.
+     */
+    function send_vector() {
+        // Очищается блок вывода данных
+        delete_div_content(response_div);
+        // Id объекта проверяется на валидность
+        let obj_id, valid;
+        [obj_id, valid] = check_id();
+        if (valid) {
+            // Id валидный. Наполняется блок вывода
+            response_div.innerHTML = simple_output_code;
+            // Отправляется запрос
+            let formdata = new FormData(document.getElementById('input'));
+            put(formdata);
+        }
+    }
+
+    /**
+     * Функция сравнивает два вектора.
+     */
+    function compare_objs() {
+        // Очищается блок вывода данных
+        delete_div_content(response_div);
+        // Id объектов проверяются на валидность
+        let obj_id1, valid1;
+        [obj_id1, valid1] = check_id('obj_id_1');
+        let obj_id2, valid2;
+        [obj_id2, valid2] = check_id('obj_id_2');
+        if (valid1 && valid2) {
+            // Id валидные. Наполняется блок вывода
+            response_div.innerHTML = simple_output_code;
+            // Отправляется запрос
+            params = [['Id1', obj_id1], ['Id2', obj_id2]];
+            get('{% url "compare" %}', [], params).then(function (response) {
+                // Запрос выполнен
+                let resp_form = document.getElementById('response');
+                if (response.hasOwnProperty('Euclid'))
+                    resp_form.value = response.Euclid;
+            }, function (error) {
+                // Запрос не выполнен
+                console.log(error);
+            });
+        }
+    }
+
+    /**
+     * Функция удаляет объект.
+     */
+    function delete_obj() {
+        // Очищается блок вывода данных
+        delete_div_content(response_div);
+        // Id объекта проверяется на валидность
+        let obj_id, valid;
+        [obj_id, valid] = check_id('obj_id');
+        if (valid) {
+            // Id валидный. Наполняется блок вывода
+            response_div.innerHTML = simple_output_code;
+            // Отправляется запрос
+            del(obj_id);
+        }
+    }
+
+    // Получаем блок для ввода данных от пользователя
+    var request_div = document.getElementById('request_div');
+    // Получаем блок для вывода ответа на запрос пользователя
+    var response_div = document.getElementById('response_div');
+
+    // HTML код формы ввода данных при создании нового объекта
+    const new_obj_creation_code = '\
+    <form>\
+        {% csrf_token %}\
+        <div class="form-group row">\
+            <label for="first_name" class="col-sm-2 col-form-label">Имя</label>\
+            <div class="col-sm-10">\
+                <input type="text" class="form-control" id="first_name" placeholder="Имя">\
+            </div>\
+        </div>\
+        <div class="form-group row">\
+            <label for="last_name" class="col-sm-2 col-form-label">Фамилия</label>\
+            <div class="col-sm-10">\
+                <input type="text" class="form-control" id="last_name" placeholder="Фамилия">\
+            </div>\
+        </div>\
+        <button type="button" class="btn btn-primary" onclick="create_new_obj()">Создать объект</button>\
+    </form>';
+
+    // HTML код формы ввода данных при получении информации об объекте
+    const receiving_info_code = '\
+    <form>\
+        <div class="form-group row">\
+            <label for="obj_id" class="col-sm-2 col-form-label">Id</label>\
+            <div class="col-sm-10">\
+                <input type="text" class="form-control" id="obj_id" placeholder="Id">\
+            </div>\
+        </div>\
+        <button type="button" class="btn btn-primary" onclick="get_info()">Получить информацию</button>\
+    </form>';
+
+    // HTML код формы ввода данных при добавлении вектора
+    const addition_vector_code = '\
+    <form id="input">\
+        <div class="form-group row">\
+            <label for="obj_id" class="col-sm-2 col-form-label">Id</label>\
+            <div class="col-sm-10">\
+                <input type="text" class="form-control" id="obj_id" name="obj_id" placeholder="Id">\
+            </div>\
+        </div>\
+        <div class="form-group row">\
+            <label for="file" class="col-sm-2 col-form-label">Файл</label>\
+            <input type="file" class="form-control-file col-sm-10" id="file" name="file">\
+        </div>\
+        <button type="button" class="btn btn-primary" onclick="send_vector()">Добавить вектор</button>\
+    </form>';
+
+    // HTML код формы ввода данных для сравнения векторов
+    const comparison_objs_code = '\
+    <form>\
+        <div class="form-group row">\
+            <label for="obj_id_1" class="col-sm-2 col-form-label">Id 1</label>\
+            <div class="col-sm-10">\
+                <input type="text" class="form-control" id="obj_id_1" placeholder="Id 1">\
+            </div>\
+        </div>\
+        <div class="form-group row">\
+            <label for="obj_id_2" class="col-sm-2 col-form-label">Id 2</label>\
+            <div class="col-sm-10">\
+                <input type="text" class="form-control" id="obj_id_2" placeholder="Id 2">\
+            </div>\
+        </div>\
+        <button type="button" class="btn btn-primary" onclick="compare_objs()">Сравнить объекты</button>\
+    </form>';
+
+    // HTML код формы ввода данных для удаления объекта
+    const deletion_obj_code = '\
+    <form>\
+        <div class="form-group row">\
+            <label for="obj_id" class="col-sm-2 col-form-label">Id</label>\
+            <div class="col-sm-10">\
+                <input type="text" class="form-control" id="obj_id" placeholder="Id">\
+            </div>\
+        </div>\
+        <button type="button" class="btn btn-primary" onclick="delete_obj()">Удалить объект</button>\
+    </form>';
+
+    // HTML код формы вывода данных о создании объекта
+    const creation_obj_output_code = '\
+    <form>\
+        <div class="form-group row">\
+            <label for="obj_id" class="col-sm-2 col-form-label">Id</label>\
+            <div class="col-sm-10">\
+                <input type="text" readonly class="form-control" id="obj_id">\
+            </div>\
+        </div>\
+    </form>';
+
+    // HTML код формы вывода Id всех объектов
+    const receiving_ids_output_code = '\
+    <form>\
+        <div class="form-group">\
+            <label for="objs_ids">Id объектов</label>\
+            <select multiple class="form-control" id="objs_ids">\
+            </select>\
+        </div>\
+    </form>';
+
+    // HTML код формы вывода информации об объекте
+    const receiving_info_output_code = '\
+    <form>\
+        <div class="form-group row">\
+            <label for="first_name" class="col-sm-2 col-form-label">Имя</label>\
+            <div class="col-sm-10">\
+                <input type="text" readonly class="form-control" id="first_name" placeholder="Объекта нет">\
+            </div>\
+        </div>\
+        <div class="form-group row">\
+            <label for="last_name" class="col-sm-2 col-form-label">Фамилия</label>\
+            <div class="col-sm-10">\
+                <input type="text" readonly class="form-control" id="last_name" placeholder="Объекта нет">\
+            </div>\
+        </div>\
+        <div class="form-group row">\
+            <div class="form-check form-check-inline">\
+                <input class="form-check-input" disabled type="checkbox" id="vector_exists" value="option1">\
+                <label class="form-check-label" for="vector_exists">Есть вектор</label>\
+            </div>\
+            <div class="form-check form-check-inline">\
+                <input class="form-check-input" disabled type="checkbox" id="vector_dont_exists" value="option2" checked>\
+                <label class="form-check-label" for="vector_don_exists">Нет вектора</label>\
+            </div>\
+        </div>\
+    </form>';
+
+    // HTML код формы вывода информации о добавлении вектора
+    const simple_output_code = '\
+    <form>\
+        <div class="form-group row">\
+            <label for="response" class="col-sm-2 col-form-label">Результат</label>\
+            <div class="col-sm-10">\
+                <input type="text" readonly class="form-control" id="response" placeholder="Сравнение нельзя провести">\
+            </div>\
+        </div>\
+    </form>';
+
+    // Получаем csrf_token
+    var token = '{% csrf_token %}';
+    let start = token.lastIndexOf('=') + 2;
+    let stop = token.lastIndexOf('\"');
+    token = token.slice(start, stop);
+</script>
+{% endblock %}
